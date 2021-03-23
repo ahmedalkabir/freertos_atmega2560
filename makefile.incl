@@ -1,0 +1,73 @@
+
+TOP_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+SOURCE_DIR = $(TOP_DIR)/FreeRTOS
+PORT_DIR = $(TOP_DIR)/port
+
+
+CC= avr-gcc
+CXX= avr-g++
+AR= avr-gcc-ar
+ARFLGS= rcs
+MCU ?= atmega2560 # can be atmega2560
+FREQ ?= 16000000
+FORMAT = ihex
+TARGET = blinky_rtos
+COM = COM18
+
+SRC = \
+$(PORT_DIR)/port.c \
+$(SOURCE_DIR)/tasks.c \
+$(SOURCE_DIR)/queue.c \
+$(SOURCE_DIR)/list.c \
+$(SOURCE_DIR)/croutine.c \
+$(SOURCE_DIR)/heap_1.c 
+
+OBJ = $(patsubst %.c, %.o, $(SRC))
+
+WARNINGS=-Wall -Wextra -Wshadow -Wpointer-arith -Wbad-function-cast -Wcast-align -Wsign-compare \
+		-Waggregate-return -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wunused
+
+CFLAGS = -mmcu=$(MCU) -DF_CPU=$(FREQ) -I$(PORT_DIR) -I$(SOURCE_DIR)/include  \
+-fsigned-char -funsigned-bitfields -fpack-struct -fshort-enums -std=gnu99 \
+-ffunction-sections -fdata-sections -MMD -flto -fno-fat-lto-objects
+
+# Define Messages
+# English
+MSG_ERRORS_NONE = Errors: none
+MSG_BEGIN = -------- begin --------
+MSG_END = --------  end  --------
+MSG_SIZE_BEFORE = Size before: 
+MSG_SIZE_AFTER = Size after:
+MSG_COFF = Converting to AVR COFF:
+MSG_EXTENDED_COFF = Converting to AVR Extended COFF:
+MSG_FLASH = Creating load file for Flash:
+MSG_EEPROM = Creating load file for EEPROM:
+MSG_EXTENDED_LISTING = Creating Extended Listing:
+MSG_SYMBOL_TABLE = Creating Symbol Table:
+MSG_LINKING = Linking:
+MSG_COMPILING = Compiling:
+MSG_ASSEMBLING = Assembling:
+MSG_CLEANING = Cleaning project.....
+MSG_BUILD = Build the Project 
+
+%.o: %.c
+	@echo $(MSG_COMPILING) $<
+	@$(CC) -c $(CFLAGS) $< -o $@
+
+build: $(OBJ)
+	@echo $(MSG_BUILD) $(TARGET)
+	@$(CC) $(CFLAGS) main.c $(OBJ) -o $(TARGET).elf
+	avr-size -C --mcu=$(MCU) $(TARGET).elf
+	avr-objcopy -O ihex -R .eeprom $(TARGET).elf $(TARGET).hex
+
+flash: $(TARGET).elf
+	avrdude -p $(MCU) -c wiring -P $(COM) -b 115200 -D -U flash:w:$(TARGET).hex:i
+
+clean:
+	@echo $(MSG_CLEANING)
+	@rm -f $(SOURCE_DIR)/*.o $(SOURCE_DIR)/*.d $(PORT_DIR)/*.d $(PORT_DIR)/*.o \
+	*.elf *.hex *.d
+
+
+list:
+	@echo $(SOURCE_DIR)
