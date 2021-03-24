@@ -15,13 +15,12 @@
 #define task1_TASK_PRIORITY					( tskIDLE_PRIORITY + 1 )
 
 void vApplicationIdleHook( void );
-extern void vUARTCommandConsoleStart( uint16_t usStackSize, UBaseType_t uxPriority );
 
 void vTask1(void *pvParameters) 
 {
 	while (1) {
 		PORTB = ~PORTB;
-		vTaskDelay(2000);		
+		vTaskDelay(1000 / portTICK_PERIOD_MS);		
 	}
 }
 

@@ -79,6 +79,12 @@ extern volatile TCB_t * volatile pxCurrentTCB;
  * so we need not worry about reading/writing to the stack pointer. 
  */
 
+// I used the demo of Atmega323 that come with FreeRTOS but 
+// with different changes, atmega2560 it has 17 bit PC which 
+// is different from varieties of atmega*, so I did a minor 
+// changes which is based on this resource
+// http://hardwaresw.blogspot.com/2016/08/freertos-900-on-arduinomega-blink.html
+// the modified parts comes in when and how you save the stack of the task
 #define portSAVE_CONTEXT()									\
 	asm volatile (	"push	r0						\n\t"	\
 					"in		r0, __SREG__			\n\t"	\
@@ -381,39 +387,49 @@ void vPortYieldFromTick( void )
  */
 static void prvSetupTimerInterrupt( void )
 {
-unsigned portLONG ulCompareMatch;
-unsigned portCHAR ucHighByte, ucLowByte;
+// unsigned portLONG ulCompareMatch;
+// unsigned portCHAR ucHighByte, ucLowByte;
 
-	/* Using 16bit timer 1 to generate the tick.  Correct fuses must be
-	selected for the configCPU_CLOCK_HZ clock. */
-	ulCompareMatch = configCPU_CLOCK_HZ / configTICK_RATE_HZ;
+// 	/* Using 16bit timer 1 to generate the tick.  Correct fuses must be
+// 	selected for the configCPU_CLOCK_HZ clock. */
+// 	ulCompareMatch = configCPU_CLOCK_HZ / configTICK_RATE_HZ;
 
-	/* We only have 16 bits so have to scale to get our required tick rate. */
-	ulCompareMatch /= portCLOCK_PRESCALER;
+// 	/* We only have 16 bits so have to scale to get our required tick rate. */
+// 	ulCompareMatch /= portCLOCK_PRESCALER;
 
-	/* Adjust for correct value. */
-	ulCompareMatch -= ( uint32_t ) 1;
+// 	/* Adjust for correct value. */
+// 	ulCompareMatch -= ( uint32_t ) 1;
 
-	/* Setup compare match value for compare match A.  Interrupts are disabled 
-	before this is called so we need not worry here. */
-	ucLowByte = ( uint8_t ) ( ulCompareMatch & ( uint32_t ) 0xff );
-	ulCompareMatch >>= 8;
-	ucHighByte = ( uint8_t ) ( ulCompareMatch & ( uint32_t ) 0xff );
-	OCR1AH = ucHighByte;
-	OCR1AL = ucLowByte;
+// 	/* Setup compare match value for compare match A.  Interrupts are disabled 
+// 	before this is called so we need not worry here. */
+// 	ucLowByte = ( uint8_t ) ( ulCompareMatch & ( uint32_t ) 0xff );
+// 	ulCompareMatch >>= 8;
+// 	ucHighByte = ( uint8_t ) ( ulCompareMatch & ( uint32_t ) 0xff );
+// 	OCR1AH = ucHighByte;
+// 	OCR1AL = ucLowByte;
 
-	/* Setup clock source and compare match behaviour. */
-	ucLowByte = portCLEAR_COUNTER_ON_MATCH_TCCR1A;
-	TCCR1A = ucLowByte;
-	ucLowByte = portCLEAR_COUNTER_ON_MATCH_TCCR1B | portPRESCALE_64;
-	TCCR1B = ucLowByte;
+// 	/* Setup clock source and compare match behaviour. */
+// 	ucLowByte = portCLEAR_COUNTER_ON_MATCH_TCCR1A;
+// 	TCCR1A = ucLowByte;
+// 	ucLowByte = portCLEAR_COUNTER_ON_MATCH_TCCR1B | portPRESCALE_64;
+// 	TCCR1B = ucLowByte;
 
 
-	/* Enable the interrupt - this is okay as interrupt are currently globally
-	disabled. */
-	ucLowByte = TIMSK1;
-	ucLowByte |= portCOMPARE_MATCH_A_INTERRUPT_ENABLE;
-	TIMSK1 = ucLowByte;
+// 	/* Enable the interrupt - this is okay as interrupt are currently globally
+// 	disabled. */
+// 	ucLowByte = TIMSK1;
+// 	ucLowByte |= portCOMPARE_MATCH_A_INTERRUPT_ENABLE;
+// 	TIMSK1 = ucLowByte;
+
+// I prefer to use Timer0 over Timer 1 
+// so that's my quick implementation for atmega2560
+// and can also apply to atmega328p
+    TCCR0A |= (1 << WGM01);              // CTC mode 
+    TCCR0B |= (1 << CS00) | (1 << CS01); // CPU_CLOCK / 64
+    TIMSK0 |= (1 << OCIE0A);             // enable compare match A interrupt
+    // as it will be called every 1ms
+    TCNT0 = 0;
+    OCR0A = 249;
 }
 /*-----------------------------------------------------------*/
 
@@ -424,8 +440,15 @@ unsigned portCHAR ucHighByte, ucLowByte;
 	 * the context is saved at the start of vPortYieldFromTick().  The tick
 	 * count is incremented after the context is saved.
 	 */
-	ISR(TIMER1_COMPA_vect) __attribute__ ( ( signal, naked ) );
-	ISR(TIMER1_COMPA_vect)
+	// ISR(TIMER1_COMPA_vect) __attribute__ ( ( signal, naked ) );
+	// ISR(TIMER1_COMPA_vect)
+	// {
+	// 	vPortYieldFromTick();
+	// 	asm volatile ( "reti" );
+	// }
+
+	ISR(TIMER0_COMPA_vect) __attribute__ ( ( signal, naked ) );
+	ISR(TIMER0_COMPA_vect)
 	{
 		vPortYieldFromTick();
 		asm volatile ( "reti" );
@@ -437,8 +460,13 @@ unsigned portCHAR ucHighByte, ucLowByte;
 	 * tick count.  We don't need to switch context, this can only be done by
 	 * manual calls to taskYIELD();
 	 */
-	ISR(TIMER1_COMPA_vect) __attribute__ ( ( signal ) );
-	ISR(TIMER1_COMPA_vect)
+	// ISR(TIMER1_COMPA_vect) __attribute__ ( ( signal ) );
+	// ISR(TIMER1_COMPA_vect)
+	// {
+	// 	xTaskIncrementTick();
+	// }
+	ISR(TIMER0_COMPA_vect) __attribute__ ( ( signal ) );
+	ISR(TIMER0_COMPA_vect)
 	{
 		xTaskIncrementTick();
 	}
